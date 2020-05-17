@@ -13,7 +13,7 @@ The best performance on the val dataset is achieved with `BERT`.
 Below is the experiments and its corresponding performance. Best results are in **bold**.
 
 |Model|Precision|Recall|F1|Config|
-|:---:|:---:|:---:|:---:|:---:|:---:|
+|:---:|:---:|:---:|:---:|:---:|
 |MultinomialNB|81.06|80.05|79.38|alpha=0.0001|
 |SVM|82.94|81.60|80.94|rbf kernel, C=1.8|
 |AdaBoostDT|80.50|79.85|79.29|n_estimators=1000|
