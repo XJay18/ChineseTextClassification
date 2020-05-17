@@ -49,8 +49,7 @@ class ChineseTextSet(Dataset):
             line = f.readline()
             while line:
                 # Specify your data format here. #
-                # data_idx, label, ctx = line.split(delimiter)
-                data_idx, ctx, label = line.split(delimiter)
+                data_idx, label, ctx = line.split(delimiter)
 
                 # You may not need to modify the codes below.
                 label = LABEL_MAP[int(label)]
