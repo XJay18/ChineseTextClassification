@@ -1,0 +1,10 @@
+model:
+  name: AdaBoostDT
+  n_estimators: 1000
+
+#  name: MultinomialNB
+#  alpha: 0.0001
+
+#  name: SVM
+#  C: 1.8
+#  kernel: rbf
