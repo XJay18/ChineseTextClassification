@@ -34,6 +34,7 @@ val_steps: 200
 #     skip_first: true
 #     val_path: ./path/to/data
 #     val_batch_size: 200
+#     delimiter: "\t"
 # device: 0
 # id: YYYY-MM-DD...HH.MM.SS
 # ckpt_fold: runs

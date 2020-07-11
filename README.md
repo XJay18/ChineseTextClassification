@@ -2,12 +2,14 @@
 - Author: **[XJay18](https://github.com/XJay18)**
 - Last Updated Time: **July, 2020**
 
+---
+
 ## Overview
 This repo is originally an assignment for my NLP course. The objective of this assignment is to perform a *Chinese text classification task* on a Chinese text dataset. 
 
-This dataset contains a training split with 20000 samples and a validation split with 2000 samples. A typical sample has the following form: `data_id|label|text` where the original labels are in the set of {0,1,4}. Label 0,1,4 stands for *normal words*, *abusive words* and *pornographic words* respectively. The goal is to classify a text sample into a positive sample (which belongs to pornography `4`) or a negative sample (which belongs to normal `0` or abuse `1`). Therefore, the classification task can effectively be treated as a *binary classification task*.
+A typical sample in the dataset may have the following form: `data_id\tlabel\ttext`. However you can easily modify the code to suit your own dataset format. For example, your dataset has the format of `data_id\ttext\tlabel` or `label|text` , etc. You can search `# Specify your data format here. #` in this repo to customize the code.
 
-#### Best F1-Score
+#### Best F1-Score (Example on a private dataset)
 The best performance on the val dataset is achieved with `BERT`.
 
 Below is the experiments and its corresponding performance. Best results are in **bold**.
@@ -19,9 +21,11 @@ Below is the experiments and its corresponding performance. Best results are in 
 |AdaBoostDT|80.50|79.85|79.29|n_estimators=1000|
 |BERT|**94.55**|**94.50**|**94.48**|[click me](\runs\BERT\2020-04-17...23.16.07\protocol.yml)|
 
-#### P-R Curve Comparison (on val dataset)
+#### P-R Curve Comparison (Example on a private validation dataset)
 
 ![pr-curve](./vis/PR_comparison.png)
+
+---
 
 ## How to run it?
 #### Requirements
@@ -224,4 +228,4 @@ Thanks to the great DL community, we currently can use the advanced DL algorithm
     - **Therefore, you can just check the file with name followed by * to see the performance on val dataset.**
 
 ## Epilogue
-If you are confused of the project's settings or have any questions, feel free to email me: jaycao2008@126.com.
+If you are confused of the project's settings or have any questions, feel free to report the issue or email me: jaycao2008@126.com.
