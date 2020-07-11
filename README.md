@@ -37,7 +37,8 @@ Please refer to [this file](requirements.txt) to see the dependencies of this pr
 
 #### Prepare dataset for testing
 
-- **Please note that you need to replace the `./path/to/data` in the codes with some appropriate paths.**
+- **Please note that you need to replace the** `./path/to/data` **in the codes with some appropriate paths.**
+- **It' s recommend that you store your dataset in a subdirectory under** `data/`. 
 
 #### Run traditional machine learning algorithm on the dataset
 
