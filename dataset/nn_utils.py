@@ -4,16 +4,16 @@ from transformers import BertTokenizer
 
 PAD = "[PAD]"
 CLS = "[CLS]"
-# Convert raw label to the expected one.
-LABEL_MAP = {0: 0, 1: 1}
+LABEL_MAP = {0: 0, 1: 1}  # Specify the orginial label to desired label map
 
 
 class ChineseTextSet(Dataset):
-    def __init__(self, path, tokenizer, pad, device=None):
+    def __init__(self, path, tokenizer, pad, delimiter="\t", skip_first=False, device=None):
         super(ChineseTextSet, self).__init__()
         self.device = torch.device("cpu") if device is None else device
         self.contents = self.prepare_data(
-            path, tokenizer, pad, delimiter="\t", apply_func=self._to_tensor)
+            path, tokenizer, pad, delimiter=delimiter,
+            skip_first=skip_first, apply_func=self._to_tensor)
 
     def __len__(self):
         return len(self.contents)
@@ -28,7 +28,7 @@ class ChineseTextSet(Dataset):
         return [to_LongTensor(_, self.device) for _ in data]
 
     @staticmethod
-    def prepare_data(path, tokenizer, pad, delimiter="|", apply_func=lambda x: x):
+    def prepare_data(path, tokenizer, pad, delimiter, skip_first=False, apply_func=lambda x: x):
         """
         Convert the raw chinese text into appropriate format for deep models.
 
@@ -38,6 +38,7 @@ class ChineseTextSet(Dataset):
             pad: The longest length for a sentence while processing.
             delimiter: The delimiter to separate different attributes in the raw
                 text file.
+            skip_first: Whether to skip the first row in the raw text file.
             apply_func: The function to apply during processing.
 
         Returns:
@@ -45,11 +46,15 @@ class ChineseTextSet(Dataset):
         """
         print("Preparing data from %s..." % path)
         contents = list()
+        data_idx = 1
         with open(path, 'r', encoding="utf-8") as f:
+            # skip the header
+            if skip_first:
+                f.readline()
             line = f.readline()
             while line:
                 # Specify your data format here. #
-                data_idx, label, ctx = line.split(delimiter)
+                _, label, ctx = line.split(delimiter)
 
                 # You may not need to modify the codes below.
                 label = LABEL_MAP[int(label)]
@@ -69,6 +74,7 @@ class ChineseTextSet(Dataset):
                 sample = apply_func(sample)
                 contents.append(sample)
                 line = f.readline()
+                data_idx += 1
         print("Done.")
         return contents
 
@@ -76,10 +82,10 @@ class ChineseTextSet(Dataset):
 if __name__ == '__main__':
     stop = 5
     batch_size = 100
-    data_path = "./path/to/data"
+    data_path = "path/to/data"
     pretrained_weights = "bert-base-chinese"
     bert_tkzer = BertTokenizer.from_pretrained(pretrained_weights)
-    dataset = ChineseTextSet(data_path, bert_tkzer, 32)
+    dataset = ChineseTextSet(data_path, bert_tkzer, 48, skip_first=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 
 
@@ -106,5 +112,5 @@ if __name__ == '__main__':
             print("qid: ", qid.shape, " device: ", idx.device)
 
 
-    test_dataset()
+    # test_dataset()
     test_dataloader()

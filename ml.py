@@ -119,9 +119,9 @@ if __name__ == '__main__':
     print("*" * 25, " RESULTS BEGINS ", "*" * 25)
     print("Model name: %s." % model_name)
     print("Config: %s.\n" % model_cfg)
-    p = precision(val_bunch.labels, estimated, average="weighted")
-    r = recall(val_bunch.labels, estimated, average="weighted")
-    f1_ = f1(val_bunch.labels, estimated, average="weighted")
+    p = precision(val_bunch.labels, estimated, average="micro", zero_division=0)
+    r = recall(val_bunch.labels, estimated, average="micro")
+    f1_ = f1(val_bunch.labels, estimated, average="micro")
     print("Precision: %.4f" % p)
     print("Recall: %.4f" % r)
     print("Precision: %.4f" % f1_)
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     # output the final results to disk
     write_predictions(
         val_data, os.path.join(record_path, "results.txt"),
-        val_bunch.data_indices, estimated
+        val_bunch.data_indices, estimated, delimiter="\t", skip_first=True
     )
 
     values = precision_recall_curve(val_bunch.labels, est_prob)

@@ -1,31 +1,31 @@
+import _pickle as pickle
+import argparse
+import math
 import os
+import random
 import sys
 import time
-import yaml
-import math
-import random
-import argparse
-import _pickle as pickle
-import numpy as np
-from tqdm import tqdm
 from pprint import pprint
 
-import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from transformers.optimization import AdamW
-from tensorboardX import SummaryWriter
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_score as precision
-from sklearn.metrics import recall_score as recall
+import numpy as np
+import torch
+import yaml
+from sklearn.metrics import accuracy_score as accuracy
 from sklearn.metrics import f1_score as f1
 from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import precision_score as precision
+from sklearn.metrics import recall_score as recall
+from tensorboardX import SummaryWriter
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers.optimization import AdamW
 
-from schedulers import fetch_scheduler
 from dataset import ChineseTextSet, PAD, CLS, write_predictions
 from losses import fetch_loss
 from models import fetch_nn
 from result import Logger
+from schedulers import fetch_scheduler
 
 
 def arg_parser():
@@ -103,41 +103,50 @@ class Trainer(object):
 
         # dataset config
         data_cfg = proto["data"]
-        train_data_path = data_cfg["train_path"]
-        val_data_path = data_cfg["val_path"]
+        train_data_path = data_cfg.get("train_path", None)
+        val_data_path = data_cfg.get("val_path", None)
         pad = data_cfg.get("pad", 32)
-        train_bs = data_cfg["train_batch_size"]
-        val_bs = data_cfg["val_batch_size"]
+        train_bs = data_cfg.get("train_batch_size", None)
+        val_bs = data_cfg.get("val_batch_size", None)
         self.val_bs = val_bs
+        self.skip_first = data_cfg.get("skip_first", False)
+        self.delimiter = data_cfg.get("delimiter", "\t")
 
         # assorted config
-        optim_cfg = proto["optimizer"]
+        optim_cfg = proto.get("optimizer", {"lr": 0.00003})
         sched_cfg = proto.get("schedulers", None)
         loss = proto.get("loss", "CE")
         self.device = proto.get("device", None)
 
         model_cfg.pop("name")
 
-        if torch.cuda.is_available() and self.device is not None and stage == "train":
+        if torch.cuda.is_available() and self.device is not None:
             print("Using device: %d." % self.device)
+            self.device = torch.device(self.device)
             self.gpu = True
         else:
-            self.device = torch.device("cpu")  # using cpu when testing.
             print("Using cpu device.")
+            self.device = torch.device("cpu")
             self.gpu = False
 
         if stage == "train":
+            if train_data_path is None or val_data_path is None:
+                raise ValueError("Please specify both train and val data path.")
+            if train_bs is None or val_bs is None:
+                raise ValueError("Please specify both train and val batch size.")
             # loading model
             self.model = fetch_nn(model_name)(**model_cfg)
             self.model = self.model.cuda(self.device)
 
             # loading dataset and converting into dataloader
             self.train_data = ChineseTextSet(
-                path=train_data_path, tokenizer=self.model.tokenizer, pad=pad)
+                path=train_data_path, tokenizer=self.model.tokenizer, pad=pad,
+                delimiter=self.delimiter, skip_first=self.skip_first)
             self.train_loader = DataLoader(
                 self.train_data, train_bs, shuffle=True, num_workers=4)
             self.val_data = ChineseTextSet(
-                path=val_data_path, tokenizer=self.model.tokenizer, pad=pad)
+                path=val_data_path, tokenizer=self.model.tokenizer, pad=pad,
+                delimiter=self.delimiter, skip_first=self.skip_first)
             self.val_loader = DataLoader(
                 self.val_data, val_bs, shuffle=True, num_workers=4)
 
@@ -174,9 +183,14 @@ class Trainer(object):
             self.f1_meter = AverageMeter()
             self.p_meter = AverageMeter()
             self.r_meter = AverageMeter()
+            self.acc_meter = AverageMeter()
             self.loss_meter = AverageMeter()
 
         if stage == "test":
+            if val_data_path is None:
+                raise ValueError("Please specify the val data path.")
+            if val_bs is None:
+                raise ValueError("Please specify the val batch size.")
             id = proto["id"]
             ckpt_fold = proto.get("ckpt_fold", "runs")
             self.record_path = os.path.join(ckpt_fold, model_name, id)
@@ -188,6 +202,9 @@ class Trainer(object):
             self.model = fetch_nn(model_name)(weights=weights)
             # loading the weights for the final fc layer
             self.model.load_state_dict(fc_dict, strict=False)
+            # loading model to gpu device if specified
+            if self.gpu:
+                self.model = self.model.cuda(self.device)
 
             print("Testing directory: %s." % self.record_path)
             print("*" * 25, " PROTO BEGINS ", "*" * 25)
@@ -196,7 +213,8 @@ class Trainer(object):
 
             self.val_path = val_data_path
             self.test_data = ChineseTextSet(
-                path=val_data_path, tokenizer=self.model.tokenizer, pad=pad)
+                path=val_data_path, tokenizer=self.model.tokenizer, pad=pad,
+                delimiter=self.delimiter, skip_first=self.skip_first)
             self.test_loader = DataLoader(
                 self.test_data, val_bs, shuffle=True, num_workers=4)
 
@@ -248,6 +266,17 @@ class Trainer(object):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+    @staticmethod
+    def update_metrics(gt, pre, f1_m, p_m, r_m, acc_m):
+        f1_value = f1(gt, pre, average="micro")
+        f1_m.update(f1_value)
+        p_value = precision(gt, pre, average="micro", zero_division=0)
+        p_m.update(p_value)
+        r_value = recall(gt, pre, average="micro")
+        r_m.update(r_value)
+        acc_value = accuracy(gt, pre)
+        acc_m.update(acc_value)
+
     def train(self):
         timer = Timer()
         writer = SummaryWriter(self.record_path)
@@ -257,6 +286,7 @@ class Trainer(object):
             self.f1_meter.reset()
             self.p_meter.reset()
             self.r_meter.reset()
+            self.acc_meter.reset()
             self.loss_meter.reset()
             self.optimizer.step()
             self.scheduler.step()
@@ -276,12 +306,10 @@ class Trainer(object):
 
                 lbl = label.cpu().numpy()
                 yp = pre.argmax(1).cpu().numpy()
-                f1_value = f1(lbl, yp, average="weighted")
-                self.f1_meter.update(f1_value)
-                p_value = precision(lbl, yp, average="weighted", zero_division=0)
-                self.p_meter.update(p_value)
-                r_value = recall(lbl, yp, average="weighted")
-                self.r_meter.update(r_value)
+                self.update_metrics(
+                    lbl, yp, self.f1_meter, self.p_meter,
+                    self.r_meter, self.acc_meter
+                )
                 self.loss_meter.update(loss.item())
 
                 if global_step % self.log_steps == 0 and writer is not None:
@@ -291,10 +319,11 @@ class Trainer(object):
 
                 train_generator.set_description(
                     "Train Epoch %d (%d/%d), "
-                    "Global Step %d, Loss %.4f, f1 %.4f, p %.4f, r %.4f, LR %.6f" % (
+                    "Global Step %d, Loss %.4f, f1 %.4f, p %.4f, r %.4f, acc %.4f, LR %.6f" % (
                         epoch_idx, batch_idx, len(self.train_loader), global_step,
                         self.loss_meter.avg, self.f1_meter.avg,
                         self.p_meter.avg, self.r_meter.avg,
+                        self.acc_meter.avg,
                         self.scheduler.get_lr()[0]
                     )
                 )
@@ -323,6 +352,7 @@ class Trainer(object):
             f1_meter = AverageMeter()
             p_meter = AverageMeter()
             r_meter = AverageMeter()
+            acc_meter = AverageMeter()
             loss_meter = AverageMeter()
             val_generator = tqdm(enumerate(self.val_loader, 1), position=0, leave=True)
             for val_idx, data in val_generator:
@@ -335,18 +365,15 @@ class Trainer(object):
 
                 lbl = label.cpu().numpy()
                 yp = pre.argmax(1).cpu().numpy()
-                f1_value = f1(lbl, yp, average="weighted")
-                f1_meter.update(f1_value)
-                p_value = precision(lbl, yp, average="weighted", zero_division=0)
-                p_meter.update(p_value)
-                r_value = recall(lbl, yp, average="weighted")
-                r_meter.update(r_value)
+                self.update_metrics(lbl, yp, f1_meter, p_meter, r_meter, acc_meter)
                 loss_meter.update(loss.item())
 
                 val_generator.set_description(
-                    "Eval Epoch %d (%d/%d), Global Step %d, Loss %.4f, f1 %.4f, p %.4f, r %.4f" % (
+                    "Eval Epoch %d (%d/%d), Global Step %d, Loss %.4f, "
+                    "f1 %.4f, p %.4f, r %.4f, acc %.4f" % (
                         epoch, val_idx, len(self.val_loader), step,
-                        loss_meter.avg, f1_meter.avg, p_meter.avg, r_meter.avg
+                        loss_meter.avg, f1_meter.avg,
+                        p_meter.avg, r_meter.avg, acc_meter.avg
                     )
                 )
 
@@ -356,6 +383,7 @@ class Trainer(object):
                 writer.add_scalar("val/f1", f1_meter.avg, step)
                 writer.add_scalar("val/precision", p_meter.avg, step)
                 writer.add_scalar("val/recall", r_meter.avg, step)
+                writer.add_scalar("val/acc", acc_meter.avg, step)
             if f1_meter.avg > self.best_f1:
                 self.best_f1 = f1_meter.avg
                 self.best_step = step
@@ -366,7 +394,8 @@ class Trainer(object):
             self._save_ckpt(step, best=False, f=f1_meter.avg, p=p_meter.avg, r=r_meter.avg)
 
     def test(self):
-        t_idx = random.randint(0, self.val_bs)
+        # t_idx = random.randint(0, self.val_bs)
+        t_idx = random.randint(0, 5)
         with torch.no_grad():
             self.fixed_randomness()  # for reproduction
 
@@ -386,30 +415,29 @@ class Trainer(object):
             f1_meter = AverageMeter()
             p_meter = AverageMeter()
             r_meter = AverageMeter()
+            accuracy_meter = AverageMeter()
             test_generator = tqdm(enumerate(self.test_loader, 1))
             for idx, data in test_generator:
                 self.model.eval()
                 id, label, _, mask, data_idx = data
+                if self.gpu:
+                    id, mask, label = self.to_cuda(id, mask, label)
                 pre = self.model((id, mask))
 
-                lbl = label.numpy()
-                yp = pre.argmax(1).numpy()
-                f1_value = f1(lbl, yp, average="weighted")
-                f1_meter.update(f1_value)
-                p_value = precision(lbl, yp, average="weighted", zero_division=0)
-                p_meter.update(p_value)
-                r_value = recall(lbl, yp, average="weighted")
-                r_meter.update(r_value)
+                lbl = label.cpu().numpy()
+                yp = pre.argmax(1).cpu().numpy()
+                self.update_metrics(lbl, yp, f1_meter, p_meter, r_meter, accuracy_meter)
 
                 test_generator.set_description(
-                    "Test %d/%d, f1 %.4f, p %.4f, r %.4f"
-                    % (idx, len(self.test_loader), f1_meter.avg, p_meter.avg, r_meter.avg)
+                    "Test %d/%d, f1 %.4f, p %.4f, r %.4f, acc %.4f"
+                    % (idx, len(self.test_loader), f1_meter.avg,
+                       p_meter.avg, r_meter.avg, accuracy_meter.avg)
                 )
 
                 data_idxs.append(data_idx.numpy())
                 all_preds.append(yp)
 
-                predicts.append(torch.select(pre, dim=1, index=1).numpy())
+                predicts.append(torch.select(pre, dim=1, index=1).cpu().numpy())
                 truths.append(lbl)
 
                 # show some of the sample
@@ -427,14 +455,16 @@ class Trainer(object):
             for c, t, l in zip(show_ctxs, targets, pred_lbls):
                 print("ctx: ", c, " gt: ", t, " est: ", l)
             print("*" * 25, " SAMPLE ENDS ", "*" * 25)
-            print("Test, FINAL f1 %.4f\n" % f1_meter.avg)
+            print("Test, FINAL f1 %.4f, "
+                  "p %.4f, r %.4f, acc %.4f\n" %
+                  (f1_meter.avg, p_meter.avg, r_meter.avg, accuracy_meter.avg))
 
             # output the final results to disk
             data_idxs = np.concatenate(data_idxs, axis=0)
             all_preds = np.concatenate(all_preds, axis=0)
             write_predictions(
                 self.val_path, os.path.join(self.record_path, "results.txt"),
-                data_idxs, all_preds
+                data_idxs, all_preds, delimiter=self.delimiter, skip_first=self.skip_first
             )
 
             # output the p-r values for future plotting P-R Curve
@@ -450,8 +480,8 @@ class Trainer(object):
                 plt.figure()
                 plt.plot(
                     p_value, r_value,
-                    label="%s (AP: %.2f, F1: %.2f)"
-                          % (self.model_name, p_meter.avg, f1_meter.avg)
+                    label="%s (ACC: %.2f, F1: %.2f)"
+                          % (self.model_name, accuracy_meter.avg, f1_meter.avg)
                 )
                 plt.legend(loc="best")
                 plt.title("2-Classes P-R curve")

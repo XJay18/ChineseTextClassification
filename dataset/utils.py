@@ -1,7 +1,8 @@
-import os
-import numpy as np
 import _pickle as pickle
+import os
 from pprint import pprint
+
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 np.random.seed(666)
@@ -88,8 +89,8 @@ def fetch_stopwords(file_path):
     return sw
 
 
-def word_segment(file_path, stop_words, seg_func, delimiter="|",
-                 target_dir=None, split="train"):
+def word_segment(file_path, stop_words, seg_func, delimiter="\t",
+                 skip_first=False, target_dir=None, split="train"):
     """
     Perform word segment and (optionally) store the results.
 
@@ -99,8 +100,9 @@ def word_segment(file_path, stop_words, seg_func, delimiter="|",
             if list: all stopwords in lists;
             if str: stopwords file path.
         seg_func: func, the function used to segment words.
-        delimiter: The delimiter to separate different attributes in the raw
-            text file.
+        delimiter: str, delimiter of different fields in a sample.
+        skip_first: bool, whether to skip the first line of the
+            input file.
         target_dir: if not None, store the results to given path.
         split: str, 'train' or 'val'.
 
@@ -119,25 +121,22 @@ def word_segment(file_path, stop_words, seg_func, delimiter="|",
                 line = f.readline()
 
     text = {0: [], 1: []}
+    label_map = {0: 0, 1: 1}
     print("Processing word segmentation...")
+    data_id = 1
     with open(file_path, "r", encoding="utf-8") as f:
+        if skip_first:
+            f.readline()
         line = f.readline()
         while line:
             values = line.split(delimiter)
             # word segmentation
             segments = [_ for _ in seg_func(values[-1]) if _ not in sw]
-            data_id = values[0]
             raw = values[-1].replace("\n", "")
-            if values[1] == "4":
-                text.get(1).append(data_id + delimiter +
-                                   raw + delimiter + " ".join(segments))
-            elif values[1] == "0" or values[1] == "1":
-                text.get(0).append(data_id + delimiter +
-                                   raw + delimiter + " ".join(segments))
-            else:
-                raise ValueError(
-                    "'%s' is not in the defined classes [0,1,4]." % values[1])
+            text.get(label_map[int(values[0])]).append(
+                str(data_id) + delimiter + raw + delimiter + " ".join(segments))
             line = f.readline()
+            data_id += 1
     print("Done.")
 
     if target_dir is not None:
@@ -154,7 +153,7 @@ def word_segment(file_path, stop_words, seg_func, delimiter="|",
     return text
 
 
-def vectorize(seg_dir, delimiter="|", split="train", min_df=1,
+def vectorize(seg_dir, delimiter="\t", split="train", min_df=1,
               voc=None, verbose=True, store_dir=None):
     """
     Vectorize the word segment with tf-idf strategy and (optionally) store a
@@ -217,27 +216,33 @@ def vectorize(seg_dir, delimiter="|", split="train", min_df=1,
     return bunch
 
 
-def write_predictions(from_path, to_path, data_ids, pred, delimiter="|"):
+def write_predictions(from_path, to_path, data_ids, pred, delimiter="\t", skip_first=False):
     print("Writing predictions as 'txt' file to '%s'..." % to_path)
     results = dict()
+    data_id = 1
     with open(from_path, "r", encoding="utf-8") as f:
+        if skip_first:
+            f.readline()
         line = f.readline()
         while line:
-            data_id, _, ctx = line.split(delimiter)
+            # Specify your data format here. #
+            _, _, ctx = line.split(delimiter)
+
             results.update({int(data_id): ctx})
             line = f.readline()
+            data_id += 1
     for data_id, est in zip(data_ids, pred):
         if data_id in results:
-            results.update({data_id: delimiter + str(est) +
-                            delimiter + results.get(data_id)})
+            results.update({data_id:  delimiter + str(est) + delimiter + results.get(data_id)})
         else:
             raise ValueError(
                 "When writing predictions to disk, data id: %d not found in file: %s."
                 % (data_id, from_path)
             )
     with open(to_path, "w", encoding="utf-8") as f:
+        f.writelines("qid\tlabel\ttext\n")
         for k, v in results.items():
-            f.writelines(str(k) + v)
+            f.writelines(str(k) + v + "\n")
     print("Done.")
     print("\nPlease refer to '%s' to check the final predictions." % to_path)
 
@@ -249,9 +254,9 @@ def fetch_bunch(file_path):
 
 
 if __name__ == '__main__':
-    base_dir = "./path/to/data"
+    base_dir = "path/to/base_dir"
     combine_stopwords(
-        source_path=[base_dir + "stopwords_1.txt",
-                     base_dir + "stopwords_2.txt"],
+        source_path=[base_dir + "baidu_stopwords.txt",
+                     base_dir + "hit_stopwords.txt"],
         target_path=base_dir + "stopwords.txt"
     )

@@ -1,3 +1,4 @@
+#### Train Config ####
 model:
   name: BERT
   num_classes: 2
@@ -7,6 +8,8 @@ data:
   val_path: ./path/to/data
   train_batch_size: 100
   val_batch_size: 200
+  skip_first: true
+  delimiter: "\t"
 optimizer:
   lr: 0.00003
   weight_decay: 0.0005
@@ -21,3 +24,16 @@ log_steps: 100
 val_steps: 200
 #id: YYYY-MM-DD...HH.MM.SS
 #ckpt_fold: runs
+
+#### Test Config ####
+# model:
+#     name: BERT
+#     num_classes: 2
+# data:
+#     pad: 32
+#     skip_first: true
+#     val_path: ./path/to/data
+#     val_batch_size: 200
+# device: 0
+# id: YYYY-MM-DD...HH.MM.SS
+# ckpt_fold: runs

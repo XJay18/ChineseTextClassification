@@ -1,6 +1,6 @@
 ## Chinese Text Classification
 - Author: **[XJay18](https://github.com/XJay18)**
-- Last Updated Time: **May, 2020**
+- Last Updated Time: **July, 2020**
 
 ## Overview
 This repo is originally an assignment for my NLP course. The objective of this assignment is to perform a *Chinese text classification task* on a Chinese text dataset. 
@@ -182,6 +182,8 @@ Thanks to the great DL community, we currently can use the advanced DL algorithm
         val_path: ./path/to/data
         train_batch_size: 100
         val_batch_size: 200
+        skip_first: true  # Whether to skip the first line in the dataset
+        delimiter: "\t"  # The delimiter in the dataset, like '\t' or '|'
     optimizer:
         lr: 0.00003
         weight_decay: 0.0005
